@@ -1,7 +1,7 @@
-/*******************************************************************************
+/******************************************************************************
  * nvdsinfer_custom_retinaface.h
- *
- * Custom parser para RetinaFace en DeepStream.
+ * 
+ * Custom parser para RetinaFace en DeepStream
  ******************************************************************************/
 
 #ifndef NVDSINFER_CUSTOM_RETINAFACE_H
@@ -9,9 +9,14 @@
 
 #include <vector>
 
-// Incluir los encabezados de DeepStream necesarios
-// Asegúrate de que el SDK de DeepStream esté correctamente instalado y configurado.
-#include "nvdsinfer.h"
+// Asegúrate de incluir el header adecuado que declara `NvDsInferParseDetectionParams`
+// Normalmente se encuentra en "nvdsinfer_custom_impl.h" o "nvdsinfer.h", dependiendo
+// de tu versión de DeepStream. Ajusta según tu instalación.
+/#include "nvdsinfer_custom_impl.h" 
+
+//------------------------------------------------------------------------------
+// Estructuras auxiliares y declaraciones de funciones
+//------------------------------------------------------------------------------
 
 /**
  * @brief Estructura auxiliar para stride y anchor base.
@@ -22,53 +27,51 @@ struct StrideAnchor {
 };
 
 /**
- * @brief Estructura que representa una detección de RetinaFace.
+ * @brief Estructura que representa una detección de RetinaFace, con bbox y landmarks.
  */
 struct RetinaFaceDetection {
-    float x1;           /**< Coordenada x del borde izquierdo de la caja */
-    float y1;           /**< Coordenada y del borde superior de la caja */
-    float x2;           /**< Coordenada x del borde derecho de la caja */
-    float y2;           /**< Coordenada y del borde inferior de la caja */
-    float confidence;   /**< Puntaje de confianza de la detección */
-    float landmarks[10];/**< Coordenadas de los 5 puntos de referencia (x, y) */
+    float x1;         /**< Coordenada x del borde izquierdo de la caja */
+    float y1;         /**< Coordenada y del borde superior de la caja */
+    float x2;         /**< Coordenada x del borde derecho de la caja */
+    float y2;         /**< Coordenada y del borde inferior de la caja */
+    float confidence; /**< Puntaje de confianza de la detección */
+    float landmarks[10]; /**< Coordenadas de los 5 puntos de referencia (x,y) */
 };
 
 /**
- * @brief Decodifica las salidas de RetinaFace para obtener las detecciones.
+ * @brief Decodifica las salidas de la red RetinaFace para generar detecciones.
  *
- * @param locData Puntero a los datos de localización.
- * @param landmData Puntero a los datos de landmarks.
- * @param confData Puntero a los datos de confianza.
- * @param inputWidth Ancho de entrada de la imagen.
- * @param inputHeight Alto de entrada de la imagen.
- * @param confThreshold Umbral de confianza para filtrar detecciones.
+ * @param locData      Puntero a la data de localización (boxes).
+ * @param landmData    Puntero a la data de landmarks.
+ * @param confData     Puntero a la data de confianza (cls).
+ * @param inputWidth   Ancho de la imagen de entrada.
+ * @param inputHeight  Alto de la imagen de entrada.
+ * @param confThreshold Umbral mínimo de confianza para filtrar detecciones.
  *
- * @return Un vector de detecciones de RetinaFace que cumplen con el umbral de confianza.
+ * @return std::vector<RetinaFaceDetection> con las detecciones generadas.
  */
 std::vector<RetinaFaceDetection> decodeRetinaFace(
     const float* locData,
     const float* landmData,
     const float* confData,
-    int inputWidth,      /**< Ancho de entrada de la red (INPUT_W) */
-    int inputHeight,     /**< Alto de entrada de la red (INPUT_H) */
-    float confThreshold  /**< Umbral de confianza (ej. 0.5 o 0.6) */
+    int inputWidth,
+    int inputHeight,
+    float confThreshold
 );
 
 /**
- * @brief Función principal para parsear las salidas de RetinaFace en DeepStream.
+ * @brief Parser principal que DeepStream llama para convertir las salidas de la red en
+ *        NvDsInferObjectDetectionInfo y NvDsInferAttribute.
  *
- * Esta función es llamada por DeepStream para interpretar las salidas de la red y
- * extraer las detecciones de objetos (rostros) en el formato requerido por DeepStream.
+ * @param outputLayersInfo Información de las capas de salida.
+ * @param networkInfo      Información de la red (dimensiones de entrada).
+ * @param detectionParams  Parámetros de detección de DeepStream (threshold, NMS, etc.).
+ * @param objectList       Vector donde se almacenan las detecciones.
+ * @param attrList         Vector donde se almacenan atributos adicionales (si se usan).
+ * @param customData       Puntero a datos personalizados (opcional).
+ * @param batchSize        Tamaño del batch.
  *
- * @param outputLayersInfo Vector que contiene información sobre las capas de salida de la red.
- * @param networkInfo Información sobre la red, como dimensiones de entrada.
- * @param detectionParams Parámetros adicionales para la detección.
- * @param objectList Vector donde se almacenarán las detecciones de objetos.
- * @param attrList Vector donde se almacenarán los atributos adicionales (si los hay).
- * @param customData Puntero a datos personalizados (no utilizado en este caso).
- * @param batchSize Tamaño del batch (número de imágenes procesadas simultáneamente).
- *
- * @return `true` si el parsing fue exitoso, `false` de lo contrario.
+ * @return `true` si tuvo éxito, `false` en caso de error.
  */
 extern "C" bool NvDsInferParseCustomRetinaFace(
     const std::vector<NvDsInferLayerInfo> &outputLayersInfo,
