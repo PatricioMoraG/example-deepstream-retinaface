@@ -151,7 +151,7 @@ bool NvDsInferParseCustomRetinaFace(
 
     // 3) Obtener punteros a las 3 salidas
     const NvDsInferLayerInfo &locLayer   = outputLayersInfo[0];
-    const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1]; // si luego parseas landmarks
+    //const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1]; // si luego parseas landmarks
     const NvDsInferLayerInfo &confLayer  = outputLayersInfo[2];
 
     // Convierte buffer a float*
