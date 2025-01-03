@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "nvdsinfer_custom_retinaface.h"
-#include <nvinfer.h>
+// #include <nvinfer.h>
 
 // DeepStream 6.x / TensorRT 8.x
 // Se asume que la librería se compila con -shared -fPIC y que se definirá
@@ -119,9 +119,11 @@ bool NvDsInferParseCustomRetinaFace(
     const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1];
     const NvDsInferLayerInfo &confLayer  = outputLayersInfo[2];
 
-    const float *locData   = reinterpret_cast<const float *>(locLayer.buffer);
-    const float *landmData = reinterpret_cast<const float *>(landmLayer.buffer);
-    const float *confData  = reinterpret_cast<const float *>(confLayer.buffer);
+    // const float *locData   = reinterpret_cast<const float *>(locLayer.buffer);
+    // const float *landmData = reinterpret_cast<const float *>(landmLayer.buffer);
+    // const float *confData  = reinterpret_cast<const float *>(confLayer.buffer);
+    const float* locData = static_cast<float*>(locLayer.buffer);
+    const float* confData = static_cast<float*>(confLayer.buffer);
 
     // Numero total de "priors" o anchors
     //  Ej: 16800 => (40x40 + 20x20 + ...), depende de la config
