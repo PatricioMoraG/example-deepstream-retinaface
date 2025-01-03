@@ -38,7 +38,7 @@ CFLAGS+= -I/usr/local/cuda-$(CUDA_VER)/include
 LIBS:= -lnvinfer_plugin -lnvinfer -lnvparsers
 LFLAGS:= -shared -Wl,--start-group $(LIBS) -Wl,--end-group
 
-SRCFILES:= nvdsparse_retinaface.cpp
+SRCFILES:= nvdsinfer_custom_retinaface.cpp
 TARGET_LIB:= libnvdsinfer_custom_impl_retinaface.so
 
 all: $(TARGET_LIB)

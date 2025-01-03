@@ -81,3 +81,6 @@ The "nvmultistreamtiler" composite streams based on their stream-ids in
 row-major order (starting from stream 0, left to right across the top row, then
 across the next row, etc.).
 
+Referencies
+
+https://github.com/zhouyuchong/face-recognition-deepstream/blob/main/models/retinaface/nvdsinfer_customparser/nvdsparse_retinaface.cpp
