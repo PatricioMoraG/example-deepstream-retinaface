@@ -12,7 +12,7 @@
 // Asegúrate de incluir el header adecuado que declara `NvDsInferParseDetectionParams`
 // Normalmente se encuentra en "nvdsinfer_custom_impl.h" o "nvdsinfer.h", dependiendo
 // de tu versión de DeepStream. Ajusta según tu instalación.
-/#include "nvdsinfer_custom_impl.h" 
+#include "nvdsinfer_custom_impl.h" 
 
 //------------------------------------------------------------------------------
 // Estructuras auxiliares y declaraciones de funciones
