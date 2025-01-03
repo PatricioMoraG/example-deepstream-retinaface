@@ -60,7 +60,6 @@ GST_CAPS_FEATURES_NVMM = "memory:NVMM"
 pgie_classes_str = ["Face"]
 
 MIN_CONFIDENCE = 0.3
-MAX_CONFIDENCE = 0.4
 
 def tiler_sink_pad_buffer_probe(pad, info, u_data):
     frame_number = 0
@@ -108,7 +107,7 @@ def tiler_sink_pad_buffer_probe(pad, info, u_data):
             width = obj_meta.rect_params.width
             height = obj_meta.rect_params.height
 
-            #print(f"CONFIDENCE: {obj_meta.confidence}, TOP: {top}, LEFT: {left}, WIDTH: {width}, HEIGHT: {height}")
+            print(f"CONFIDENCE: {obj_meta.confidence}, TOP: {top}, LEFT: {left}, WIDTH: {width}, HEIGHT: {height}")
 
             draw_bounding_boxes(frame_copy, obj_meta, obj_meta.confidence)
             
