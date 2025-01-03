@@ -213,7 +213,7 @@ bool NvDsInferParseCustomRetinaFace(
     const float* locData   = reinterpret_cast<const float*>(locLayer.buffer);
     const float* landmData = reinterpret_cast<const float*>(landmLayer.buffer);
     const float* confData  = reinterpret_cast<const float*>(confLayer.buffer);
-
+    std::cout << "locData: " << locData << std::endl;
     // Determinar numBboxes (ej: 16800)
     size_t numBboxes = (locLayer.inferDims.numDims > 0) ? locLayer.inferDims.d[0] : 0;
     if (numBboxes == 0) {
@@ -226,7 +226,7 @@ bool NvDsInferParseCustomRetinaFace(
     //float nmsThreshold  = detectionParams.nms_threshold;
     float confThreshold = 0.5; //detectionParams.perClassThreshold[0]; // si hay una sola clase
     //float nmsThreshold  = detectionParams.nmsThreshold;         // umbral para NMS
-
+    batchSize = 1; // Forzamos a 1 para simplificar el código
     // Procesar cada imagen del batch
     for (int b = 0; b < batchSize; ++b) {
         // Calcular punteros para cada batch si la red se ejecuta con batch>1
@@ -243,7 +243,7 @@ bool NvDsInferParseCustomRetinaFace(
         // Llenar la lista final de objetos
         for (auto &det : dets) {
             float score = det.confidence;
-            
+
             std::cout << "Detection: " << score << " [" << det.x1 << ", " << det.y1 << ", " << det.x2 << ", " << det.y2 << "]" << std::endl;
             
             if (score < confThreshold) continue;
