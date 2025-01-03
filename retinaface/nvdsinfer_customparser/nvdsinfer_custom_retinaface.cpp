@@ -22,6 +22,49 @@ static const StrideAnchor kStrideAnchors[3] = {
     {32,  256},
 };
 
+// Función para aplicar Non-Maximum Suppression (NMS)
+// Nota: Implementa esta función según tus necesidades
+// Aquí se proporciona una implementación básica como ejemplo
+std::vector<RetinaFaceDetection> applyNMS(const std::vector<RetinaFaceDetection>& detections, float nmsThreshold) {
+    std::vector<RetinaFaceDetection> nmsDetections;
+    // Ordenar las detecciones por confianza descendente
+    std::vector<RetinaFaceDetection> sortedDetections = detections;
+    std::sort(sortedDetections.begin(), sortedDetections.end(),
+              [](const RetinaFaceDetection& a, const RetinaFaceDetection& b) -> bool {
+                  return a.confidence > b.confidence;
+              });
+
+    std::vector<bool> suppressed(sortedDetections.size(), false);
+
+    for (size_t i = 0; i < sortedDetections.size(); ++i) {
+        if (suppressed[i])
+            continue;
+
+        nmsDetections.push_back(sortedDetections[i]);
+
+        for (size_t j = i + 1; j < sortedDetections.size(); ++j) {
+            if (suppressed[j])
+                continue;
+
+            // Calcular IoU entre sortedDetections[i] y sortedDetections[j]
+            float x1 = std::max(sortedDetections[i].x1, sortedDetections[j].x1);
+            float y1 = std::max(sortedDetections[i].y1, sortedDetections[j].y1);
+            float x2 = std::min(sortedDetections[i].x2, sortedDetections[j].x2);
+            float y2 = std::min(sortedDetections[i].y2, sortedDetections[j].y2);
+
+            float intersection = std::max(0.0f, x2 - x1) * std::max(0.0f, y2 - y1);
+            float areaA = (sortedDetections[i].x2 - sortedDetections[i].x1) * (sortedDetections[i].y2 - sortedDetections[i].y1);
+            float areaB = (sortedDetections[j].x2 - sortedDetections[j].x1) * (sortedDetections[j].y2 - sortedDetections[j].y1);
+            float iou = intersection / (areaA + areaB - intersection);
+
+            if (iou > nmsThreshold)
+                suppressed[j] = true;
+        }
+    }
+
+    return nmsDetections;
+}
+
 std::vector<RetinaFaceDetection> decodeRetinaFace(
     const float* locData,
     const float* landmData,
@@ -33,7 +76,7 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
 {
     std::vector<RetinaFaceDetection> detections;
 
-    // Indices para ir recorriendo los buffers loc, landm, conf
+    // Índices para recorrer los buffers loc, landm, conf
     // ya que están concatenados por escalas, pero en buffers separados.
     int locOffset   = 0;
     int landmOffset = 0;
@@ -55,15 +98,13 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
 
         // Para cada celda (feat_h * feat_w) y cada anchor, tenemos:
         // 4 floats de loc, 10 floats de landm, 2 floats de conf.
-        // Sin embargo, en muchos modelos de TensorRT, se almacenan
-        // en forma intercalada o en “channel major”. Para simplificar,
-        // asumimos que la red te ha devuelto:
+        // Asumimos que la red te ha devuelto:
         //
         // locData  con shape: [ (4 * anchorCount) * featSize ]
-        // landmData con shape:[ (10* anchorCount) * featSize ]
+        // landmData con shape:[ (10 * anchorCount) * featSize ]
         // confData con shape: [ (2 * anchorCount) * featSize ]
         //
-        // por lo tanto, cada celda en locData ocupa 4*anchorCount floats
+        // por lo tanto, cada celda en locData ocupa 4 * anchorCount floats
         // y su index (x,y,k) lo calculamos manualmente.
 
         for (int y = 0; y < feat_h; ++y)
@@ -77,10 +118,10 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
                     // -------------------
                     // Extraer la confianza
                     // -------------------
-                    // confData en offset = (2 * anchorCount)*cellIndex + (k * 2)
+                    // confData en offset = (2 * anchorCount) * cellIndex + (k * 2)
                     //   0 => bg, 1 => face
-                    float c1 = confData[confOffset + (2 * anchorCount)*cellIndex + (k * 2) + 0];
-                    float c2 = confData[confOffset + (2 * anchorCount)*cellIndex + (k * 2) + 1];
+                    float c1 = confData[confOffset + (2 * anchorCount) * cellIndex + (k * 2) + 0];
+                    float c2 = confData[confOffset + (2 * anchorCount) * cellIndex + (k * 2) + 1];
 
                     // Convertir (bg, face) en prob de "face" si se usa softmax a 2 clases
                     //   prob(face) = exp(c2) / (exp(c1) + exp(c2))
@@ -96,61 +137,55 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
                     // -------------------
                     // Extraer bbox
                     // -------------------
-                    // locData en offset = (4 * anchorCount)*cellIndex + (k * 4)
-                    float dx = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 0];
-                    float dy = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 1];
-                    float dw = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 2];
-                    float dh = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 3];
+                    // locData en offset = (4 * anchorCount) * cellIndex + (k * 4)
+                    float dx = locData[locOffset + (4 * anchorCount) * cellIndex + (k * 4) + 0];
+                    float dy = locData[locOffset + (4 * anchorCount) * cellIndex + (k * 4) + 1];
+                    float dw = locData[locOffset + (4 * anchorCount) * cellIndex + (k * 4) + 2];
+                    float dh = locData[locOffset + (4 * anchorCount) * cellIndex + (k * 4) + 3];
 
-                    // center de la celda (en normalizado)
+                    // Center de la celda (en normalizado)
                     float prior_cx = (x + 0.5f) / feat_w;
                     float prior_cy = (y + 0.5f) / feat_h;
 
-                    // ancho y alto del anchor (normalizado)
-                    float prior_w  = (anchorSize * (k + 1)) / (float)inputWidth;
-                    float prior_h  = (anchorSize * (k + 1)) / (float)inputHeight;
+                    // Ancho y alto del anchor (normalizado)
+                    float prior_w  = (anchorSize * (k + 1)) / static_cast<float>(inputWidth);
+                    float prior_h  = (anchorSize * (k + 1)) / static_cast<float>(inputHeight);
 
-                    // Aplicar scale del decode.cu
-                    //   x = prior_cx + dx * 0.1 * prior_w
-                    //   y = prior_cy + dy * 0.1 * prior_h
-                    //   w = prior_w  * exp(dw * 0.2)
-                    //   h = prior_h  * exp(dh * 0.2)
+                    // Aplicar escala del decode.cu
+                    //   cx = prior_cx + dx * 0.1 * prior_w
+                    //   cy = prior_cy + dy * 0.1 * prior_h
+                    //   w  = prior_w  * exp(dw * 0.2)
+                    //   h  = prior_h  * exp(dh * 0.2)
                     float cx = prior_cx + dx * 0.1f * prior_w;
                     float cy = prior_cy + dy * 0.1f * prior_h;
                     float w  = prior_w  * std::exp(dw * 0.2f);
                     float h  = prior_h  * std::exp(dh * 0.2f);
 
-                    // Convertir de (cx, cy, w, h) a (x1, y1, x2, y2) normalizado
-                    float x1 = cx - w * 0.5f;
-                    float y1 = cy - h * 0.5f;
-                    float x2 = cx + w * 0.5f;
-                    float y2 = cy + h * 0.5f;
-
-                    // Escalar a píxeles
-                    x1 *= inputWidth;
-                    y1 *= inputHeight;
-                    x2 *= inputWidth;
-                    y2 *= inputHeight;
+                    // Convertir de (cx, cy, w, h) a (x1, y1, x2, y2) en píxeles
+                    float x1 = (cx - w * 0.5f) * inputWidth;
+                    float y1 = (cy - h * 0.5f) * inputHeight;
+                    float x2 = (cx + w * 0.5f) * inputWidth;
+                    float y2 = (cy + h * 0.5f) * inputHeight;
 
                     // -------------------
                     // Extraer Landmarks
                     // -------------------
-                    // landmData offset = (10 * anchorCount)*cellIndex + (k * 10)
+                    // landmData offset = (10 * anchorCount) * cellIndex + (k * 10)
                     float lm[10];
                     for (int m = 0; m < 5; m++)
                     {
-                        float ldx = landmData[landmOffset + (10 * anchorCount)*cellIndex + (k * 10) + (2*m + 0)];
-                        float ldy = landmData[landmOffset + (10 * anchorCount)*cellIndex + (k * 10) + (2*m + 1)];
+                        float ldx = landmData[landmOffset + (10 * anchorCount) * cellIndex + (k * 10) + (2 * m + 0)];
+                        float ldy = landmData[landmOffset + (10 * anchorCount) * cellIndex + (k * 10) + (2 * m + 1)];
 
-                        // decodificar
+                        // Decodificar
                         float lx = prior_cx + ldx * 0.1f * prior_w;
                         float ly = prior_cy + ldy * 0.1f * prior_h;
 
-                        // pasar a pixeles
+                        // Pasar a píxeles
                         lx *= inputWidth;
                         ly *= inputHeight;
-                        lm[2*m + 0] = lx;
-                        lm[2*m + 1] = ly;
+                        lm[2 * m + 0] = lx;
+                        lm[2 * m + 1] = ly;
                     }
 
                     // -------------------
@@ -162,7 +197,7 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
                     det.x2 = x2;
                     det.y2 = y2;
                     det.confidence = scoreFace;
-                    for (int m=0; m<10; ++m)
+                    for (int m = 0; m < 10; ++m)
                         det.landmarks[m] = lm[m];
 
                     detections.push_back(det);
@@ -179,7 +214,8 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
     // En este punto, "detections" contiene TODAS las detecciones con confidence >= confThreshold
     // Se recomienda aplicar NMS para eliminar solapamientos.
     // Por ejemplo:
-    // applyNMS(detections, nmsThreshold);
+    // float nmsThreshold = 0.4f; // Define un umbral adecuado
+    // detections = applyNMS(detections, nmsThreshold);
 
     return detections;
 }
@@ -205,8 +241,8 @@ bool NvDsInferParseCustomRetinaFace(
         return false;
     }
 
-    // 2) Generar (o usar) priors si aún no los tenemos
-    //    OJO: networkInfo.width = ancho, networkInfo.height = alto
+    // 2) Obtener dimensiones de entrada de la red
+    //    networkInfo.width = ancho, networkInfo.height = alto
     int inputW = networkInfo.width;
     int inputH = networkInfo.height;
 
@@ -228,41 +264,63 @@ bool NvDsInferParseCustomRetinaFace(
         return false;
     }
 
-    // Suponiendo inputWidth=640, inputHeight=640, y confThreshold=0.5
-    auto dets = decodeRetinaFace(locData, landmData, confData, 640, 640, 0.5f);
+    // Obtener umbral de confianza y NMS del detectionParams
+    float confThreshold = detectionParams.per_class_threshold[0]; // Asumiendo una sola clase
+    float nmsThreshold = detectionParams.nms_threshold;
 
-    //auto detsNMS = nmsRetinaFace(dets, nmsThreshold);
+    // Manejar batchSize
+    for (int batchIdx = 0; batchIdx < batchSize; ++batchIdx) {
+        // Calcular punteros para el batch actual
+        const float* locBatchData   = locData + batchIdx * numBboxes * 4;
+        const float* landmBatchData = landmData + batchIdx * numBboxes * 10;
+        const float* confBatchData  = confData + batchIdx * numBboxes * 2;
 
-    std::vector<NvDsInferObjectDetectionInfo> objectList;
-    for (auto& det : dets) {
-        float score = det.score;
+        // Decodificar las detecciones para el batch actual
+        auto dets = decodeRetinaFace(locBatchData, landmBatchData, confBatchData, inputW, inputH, confThreshold);
 
-        // Filtramos por un umbral de confianza (si no lo hiciste ya en decodeRetinaFace)
-        if (score < confThreshold) {
-            continue;
+        // Aplicar NMS si es necesario
+        dets = applyNMS(dets, nmsThreshold);
+
+        // Recorrer las detecciones después de NMS
+        for (auto& det : dets) {
+            float score = det.confidence;
+
+            // Filtrar por umbral de confianza (redundante si ya se filtró en decodeRetinaFace)
+            if (score < confThreshold) {
+                continue;
+            }
+
+            // Obtener coordenadas
+            float x1 = det.x1;
+            float y1 = det.y1;
+            float x2 = det.x2;
+            float y2 = det.y2;
+
+            // Descartar cajas degeneradas
+            if ((x2 - x1) < 1 || (y2 - y1) < 1) {
+                continue;
+            }
+
+            // Agregar el objeto (rostro) a la lista
+            NvDsInferObjectDetectionInfo objInfo;
+            objInfo.classId = 0;  // "0" = rostro (asumiendo que es la única clase)
+            objInfo.detectionConfidence = score;
+            objInfo.left   = x1;
+            objInfo.top    = y1;
+            objInfo.width  = (x2 - x1);
+            objInfo.height = (y2 - y1);
+
+            objectList.push_back(objInfo);
+
+            // Si deseas agregar atributos adicionales (como landmarks), puedes hacerlo aquí
+            // Por ejemplo:
+            /*
+            NvDsInferAttribute attr;
+            attr.attributeIndex = 0; // Define según corresponda
+            attr.attributeValue = score;
+            attrList.push_back(attr);
+            */
         }
-
-        // Obtenemos coordenadas
-        float x1 = det.x1;
-        float y1 = det.y1;
-        float x2 = det.x2;
-        float y2 = det.y2;
-
-        // Descartar boxes degeneradas
-        if ((x2 - x1) < 1 || (y2 - y1) < 1) {
-            continue;
-        }
-
-        // 6.5) Agregamos el objeto (rostro) a la lista
-        NvDsInferObjectDetectionInfo objInfo;
-        objInfo.classId = 0;  // "0" = rostro (asumiendo que es la única clase)
-        objInfo.detectionConfidence = score;
-        objInfo.left   = x1;
-        objInfo.top    = y1;
-        objInfo.width  = (x2 - x1);
-        objInfo.height = (y2 - y1);
-
-        objectList.push_back(objInfo);
     }
 
     return true;
