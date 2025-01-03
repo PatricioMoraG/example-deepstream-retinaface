@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "nvdsinfer_custom_retinaface.h"
-#include "nvinfer.h"
+// #include "nvinfer.h"
 
 // DeepStream 6.x / TensorRT 8.x
 // Se asume que la librería se compila con -shared -fPIC y que se definirá
