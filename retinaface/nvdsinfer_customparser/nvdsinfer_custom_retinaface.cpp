@@ -243,6 +243,9 @@ bool NvDsInferParseCustomRetinaFace(
         // Llenar la lista final de objetos
         for (auto &det : dets) {
             float score = det.confidence;
+            
+            std::cout << "Detection: " << score << " [" << det.x1 << ", " << det.y1 << ", " << det.x2 << ", " << det.y2 << "]" << std::endl;
+            
             if (score < confThreshold) continue;
 
             float x1 = det.x1;
