@@ -16,6 +16,27 @@
 // struct NvDsInferObjectDetectionInfo;
 // struct NvDsInferAttribute;
 
+
+/**
+ * Genera anchors (priors) para RetinaFace, equivalentes al Python PriorBox.
+ *
+ * @param min_sizes  Colección de min_sizes por nivel. Ej.: {{16,32}, {64,128}, {256,512}}
+ * @param steps      Distancias en píxeles de cada nivel. Ej.: {8,16,32}
+ * @param input_height Altura de la imagen de entrada (ej.: 640 u 840)
+ * @param input_width  Ancho  de la imagen de entrada
+ * @param clip       Indica si se deben recortar los valores a [0,1]
+ *
+ * @return Un std::vector<float> con todas las anchors concatenadas en formato
+ *         [cx, cy, w, h,  cx, cy, w, h,  ...].
+ */
+std::vector<float> generate_retinaface_anchors(
+    const std::vector<std::vector<int>>& min_sizes,
+    const std::vector<int>& steps,
+    int input_height,
+    int input_width,
+    bool clip
+)
+
 /**
  * @brief Función principal del parser RetinaFace, exportada en C.
  *

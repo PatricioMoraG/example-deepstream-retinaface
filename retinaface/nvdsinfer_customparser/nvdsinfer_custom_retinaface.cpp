@@ -17,6 +17,89 @@
 // Se asume que la librería se compila con -shared -fPIC y que se definirá
 // la función de parseo con C linkage.
 
+#include <cmath>
+#include <vector>
+#include <algorithm> // std::min, std::max
+
+/**
+ * Genera anchors (priors) para RetinaFace, equivalentes al Python PriorBox.
+ *
+ * @param min_sizes  Colección de min_sizes por nivel. Ej.: {{16,32}, {64,128}, {256,512}}
+ * @param steps      Distancias en píxeles de cada nivel. Ej.: {8,16,32}
+ * @param input_height Altura de la imagen de entrada (ej.: 640 u 840)
+ * @param input_width  Ancho  de la imagen de entrada
+ * @param clip       Indica si se deben recortar los valores a [0,1]
+ *
+ * @return Un std::vector<float> con todas las anchors concatenadas en formato
+ *         [cx, cy, w, h,  cx, cy, w, h,  ...].
+ */
+std::vector<float> generate_retinaface_anchors(
+    const std::vector<std::vector<int>>& min_sizes,
+    const std::vector<int>& steps,
+    int input_height,
+    int input_width,
+    bool clip
+)
+{
+    // 1) Calcular feature_maps = [[ceil(H/step), ceil(W/step)], ...]
+    std::vector<std::pair<int,int>> feature_maps;
+    feature_maps.reserve(steps.size());
+
+    for (auto step : steps) {
+        int fm_h = static_cast<int>(std::ceil(static_cast<float>(input_height) / step));
+        int fm_w = static_cast<int>(std::ceil(static_cast<float>(input_width) / step));
+        feature_maps.emplace_back(fm_h, fm_w);
+    }
+
+    // 2) Generar anchors
+    std::vector<float> anchors;
+    anchors.reserve(100000); // Opcional: evita realocaciones si esperas ~16800 anchors
+
+    for (size_t k = 0; k < feature_maps.size(); ++k) {
+        int fm_h = feature_maps[k].first;
+        int fm_w = feature_maps[k].second;
+
+        // min_sizes[k] => e.g. {16,32} para primer nivel
+        for (int i = 0; i < fm_h; ++i) {
+            for (int j = 0; j < fm_w; ++j) {
+                for (auto min_size : min_sizes[k]) {
+                    // w,h normalizados a [0,1]
+                    float s_kx = static_cast<float>(min_size) / input_width;
+                    float s_ky = static_cast<float>(min_size) / input_height;
+
+                    // centro x,y normalizado
+                    float cx = ((j + 0.5f) * steps[k]) / static_cast<float>(input_width);
+                    float cy = ((i + 0.5f) * steps[k]) / static_cast<float>(input_height);
+
+                    anchors.push_back(cx);
+                    anchors.push_back(cy);
+                    anchors.push_back(s_kx);
+                    anchors.push_back(s_ky);
+                }
+            }
+        }
+    }
+
+    // 3) Si 'clip' == true, recortamos los valores a [0,1]
+    if (clip) {
+        for (auto &v : anchors) {
+            v = std::min(std::max(v, 0.0f), 1.0f);
+        }
+    }
+
+    return anchors;
+}
+
+// Config de ejemplo (igual a tu Python cfg_re50)
+static const std::vector<std::vector<int>> kMinSizes = {
+    {16, 32}, {64, 128}, {256, 512}
+};
+
+static const std::vector<int> kSteps = {8, 16, 32};
+
+std::vector<float> myPriorAnchors; // global o estático
+
+
 // -----------------------------------------------------
 // Estructuras auxiliares
 // -----------------------------------------------------
@@ -103,6 +186,15 @@ bool NvDsInferParseCustomRetinaFace(
         std::cerr << "ERROR: Se esperan al menos 3 salidas [loc, landms, conf]." << std::endl;
         return false;
     }
+
+    int inputH = networkInfo.width;
+    int inputW = networkInfo.height;
+
+    if (myPriors.empty()) {
+        myPriors = generate_retinaface_anchors(kMinSizes, kSteps, inputH, inputW, false);
+        // O con clip = true si lo deseas
+    }
+    return !myPriors.empty();
 
     // -----------------------------------------------------
     // 2) Mapear punteros a cada salida
