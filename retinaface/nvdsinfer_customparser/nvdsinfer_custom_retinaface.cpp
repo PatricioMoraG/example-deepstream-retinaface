@@ -225,7 +225,7 @@ bool NvDsInferParseCustomRetinaFace(
     //float confThreshold = detectionParams.per_class_threshold[0]; // Asumiendo 1 clase
     //float nmsThreshold  = detectionParams.nms_threshold;
     float confThreshold = detectionParams.perClassThreshold[0]; // si hay una sola clase
-    float nmsThreshold  = detectionParams.nmsThreshold;         // umbral para NMS
+    //float nmsThreshold  = detectionParams.nmsThreshold;         // umbral para NMS
 
     // Procesar cada imagen del batch
     for (int b = 0; b < batchSize; ++b) {
