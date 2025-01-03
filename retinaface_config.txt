@@ -12,7 +12,8 @@ process-mode=1
 network-mode=0
 gie-unique-id=1
 network-type=0
-output-blob-names=prob
+# BBOX / LMK / SCORE
+output-blob-names=output0;839;840
 ## 0=Group Rectangles, 1=DBSCAN, 2=NMS, 3= DBSCAN+NMS Hybrid, 4 = None(No clustering)
 #cluster-mode=2
 maintain-aspect-ratio=1
@@ -21,8 +22,8 @@ num-detected-classes=1
 output-tensor-meta=1
 
 # custom detection parser
-parse-bbox-func-name=NvDsInferParseCustomRetinaface
-custom-lib-path=retinaface/nvdsinfer_customparser/libnvdsinfer_custom_impl_retinaface.so
+parse-bbox-func-name=NvDsInferParseCustomRetinaFace
+custom-lib-path=retinaface/nvdsinfer_customparser/libnvdsinfer_custom_impl_retinaface.s
 net-scale-factor=1.0
 offsets=104.0;117.0;123.0
 force-implicit-batch-dim=0
