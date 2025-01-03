@@ -8,112 +8,182 @@
 #include <vector>
 
 #include "nvdsinfer_custom_retinaface.h"
-// #include <nvinfer.h>  // (opcional, sólo si necesitas APIs directas de TRT)
 
-// --------------------------------------------------------------------------------
-// Función para generar anchors (priors) equivalente al Python PriorBox
-// --------------------------------------------------------------------------------
-std::vector<float> generate_retinaface_anchors(
-    const std::vector<std::vector<int>>& min_sizes,
-    const std::vector<int>& steps,
-    int input_height,
-    int input_width,
-    bool clip)
-{
-    std::vector<std::pair<int,int>> feature_maps;
-    feature_maps.reserve(steps.size());
-
-    // Calcular (ceil(H/step), ceil(W/step)) para cada escala
-    for (auto step : steps) {
-        int fm_h = static_cast<int>(std::ceil(static_cast<float>(input_height) / step));
-        int fm_w = static_cast<int>(std::ceil(static_cast<float>(input_width)  / step));
-        feature_maps.emplace_back(fm_h, fm_w);
-    }
-
-    // Generar anchors en [cx, cy, w, h]
-    std::vector<float> anchors;
-    anchors.reserve(100000); // Evita realocaciones si esperas ~16800 anchors
-
-    for (size_t k = 0; k < feature_maps.size(); ++k) {
-        int fm_h = feature_maps[k].first;
-        int fm_w = feature_maps[k].second;
-
-        for (int i = 0; i < fm_h; ++i) {
-            for (int j = 0; j < fm_w; ++j) {
-                for (auto min_size : min_sizes[k]) {
-                    // w,h normalizados a [0,1]
-                    float s_kx = static_cast<float>(min_size) / input_width;
-                    float s_ky = static_cast<float>(min_size) / input_height;
-
-                    // centro x,y normalizado
-                    float cx = ((j + 0.5f) * steps[k]) / static_cast<float>(input_width);
-                    float cy = ((i + 0.5f) * steps[k]) / static_cast<float>(input_height);
-
-                    anchors.push_back(cx);
-                    anchors.push_back(cy);
-                    anchors.push_back(s_kx);
-                    anchors.push_back(s_ky);
-                }
-            }
-        }
-    }
-
-    // (Opcional) Recortar a [0,1]
-    if (clip) {
-        for (auto &v : anchors) {
-            v = std::min(std::max(v, 0.0f), 1.0f);
-        }
-    }
-
-    return anchors;
-}
-
-// --------------------------------------------------------------------------------
-// Config "estática" equivalente a cfg_re50 (Python)
-// --------------------------------------------------------------------------------
-static const std::vector<std::vector<int>> kMinSizes = {
-    {16, 32}, {64, 128}, {256, 512}
+// Estructura auxiliar para stride/anchor
+struct StrideAnchor {
+    int stride;
+    int baseAnchor;
 };
-static const std::vector<int> kSteps = {8, 16, 32};
 
-// Vector global donde guardamos los priors una sola vez.
-static std::vector<float> myPriorAnchors;
+// Ejemplo de anclas para los 3 niveles, tal como en decode.cu
+static const StrideAnchor kStrideAnchors[3] = {
+    {8,   16},
+    {16,  64},
+    {32,  256},
+};
 
-// --------------------------------------------------------------------------------
-// Estructuras auxiliares
-// --------------------------------------------------------------------------------
-typedef struct {
-    float x1;
-    float y1;
-    float x2;
-    float y2;
-} BBox;
-
-// Variances típicas usadas en RetinaFace
-static const float VARIANCE[2] = {0.1f, 0.2f};
-
-// --------------------------------------------------------------------------------
-// Decodificar cada bbox (loc) usando priors y variances
-// --------------------------------------------------------------------------------
-static BBox decodeBBox(const float loc[4], const float prior[4])
+std::vector<RetinaFaceDetection> decodeRetinaFace(
+    const float* locData,
+    const float* landmData,
+    const float* confData,
+    int inputWidth,      // INPUT_W
+    int inputHeight,     // INPUT_H
+    float confThreshold  // por ej. 0.5 o 0.6
+)
 {
-    // prior: [cx, cy, w, h]
-    // loc:   [dx, dy, dw, dh]
-    BBox box;
+    std::vector<RetinaFaceDetection> detections;
 
-    float cx = prior[0] + loc[0] * VARIANCE[0] * prior[2];
-    float cy = prior[1] + loc[1] * VARIANCE[0] * prior[3];
-    float w  = prior[2] * std::exp(loc[2] * VARIANCE[1]);
-    float h  = prior[3] * std::exp(loc[3] * VARIANCE[1]);
+    // Indices para ir recorriendo los buffers loc, landm, conf
+    // ya que están concatenados por escalas, pero en buffers separados.
+    int locOffset   = 0;
+    int landmOffset = 0;
+    int confOffset  = 0;
 
-    // (cx, cy, w, h) -> (xmin, ymin, xmax, ymax)
-    box.x1 = cx - w * 0.5f;
-    box.y1 = cy - h * 0.5f;
-    box.x2 = cx + w * 0.5f;
-    box.y2 = cy + h * 0.5f;
+    // Recorremos los 3 niveles de FPN
+    for (int scaleIdx = 0; scaleIdx < 3; ++scaleIdx)
+    {
+        const int stride     = kStrideAnchors[scaleIdx].stride;    // 8,16,32
+        const int anchorSize = kStrideAnchors[scaleIdx].baseAnchor; // 16,64,256
 
-    return box;
+        // Cuántas celdas hay en cada dimensión
+        const int feat_w = inputWidth  / stride;
+        const int feat_h = inputHeight / stride;
+        const int featSize = feat_w * feat_h;
+
+        // Procesamos 2 anchors por posición (k=0..1)
+        const int anchorCount = 2; 
+
+        // Para cada celda (feat_h * feat_w) y cada anchor, tenemos:
+        // 4 floats de loc, 10 floats de landm, 2 floats de conf.
+        // Sin embargo, en muchos modelos de TensorRT, se almacenan
+        // en forma intercalada o en “channel major”. Para simplificar,
+        // asumimos que la red te ha devuelto:
+        //
+        // locData  con shape: [ (4 * anchorCount) * featSize ]
+        // landmData con shape:[ (10* anchorCount) * featSize ]
+        // confData con shape: [ (2 * anchorCount) * featSize ]
+        //
+        // por lo tanto, cada celda en locData ocupa 4*anchorCount floats
+        // y su index (x,y,k) lo calculamos manualmente.
+
+        for (int y = 0; y < feat_h; ++y)
+        {
+            for (int x = 0; x < feat_w; ++x)
+            {
+                const int cellIndex = y * feat_w + x;
+
+                for (int k = 0; k < anchorCount; ++k)
+                {
+                    // -------------------
+                    // Extraer la confianza
+                    // -------------------
+                    // confData en offset = (2 * anchorCount)*cellIndex + (k * 2)
+                    //   0 => bg, 1 => face
+                    float c1 = confData[confOffset + (2 * anchorCount)*cellIndex + (k * 2) + 0];
+                    float c2 = confData[confOffset + (2 * anchorCount)*cellIndex + (k * 2) + 1];
+
+                    // Convertir (bg, face) en prob de "face" si se usa softmax a 2 clases
+                    //   prob(face) = exp(c2) / (exp(c1) + exp(c2))
+                    // O a veces la red ya te da (bg, face) en forma "logits" o "confidence direct".
+                    // De acuerdo al decode.cu, se está usando:
+                    //     conf2 = expf(conf2) / (expf(conf1) + expf(conf2))
+                    float scoreFace = std::exp(c2) / (std::exp(c1) + std::exp(c2));
+
+                    // Si no pasa umbral, saltamos
+                    if (scoreFace < confThreshold)
+                        continue;
+
+                    // -------------------
+                    // Extraer bbox
+                    // -------------------
+                    // locData en offset = (4 * anchorCount)*cellIndex + (k * 4)
+                    float dx = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 0];
+                    float dy = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 1];
+                    float dw = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 2];
+                    float dh = locData[locOffset + (4 * anchorCount)*cellIndex + (k * 4) + 3];
+
+                    // center de la celda (en normalizado)
+                    float prior_cx = (x + 0.5f) / feat_w;
+                    float prior_cy = (y + 0.5f) / feat_h;
+
+                    // ancho y alto del anchor (normalizado)
+                    float prior_w  = (anchorSize * (k + 1)) / (float)inputWidth;
+                    float prior_h  = (anchorSize * (k + 1)) / (float)inputHeight;
+
+                    // Aplicar scale del decode.cu
+                    //   x = prior_cx + dx * 0.1 * prior_w
+                    //   y = prior_cy + dy * 0.1 * prior_h
+                    //   w = prior_w  * exp(dw * 0.2)
+                    //   h = prior_h  * exp(dh * 0.2)
+                    float cx = prior_cx + dx * 0.1f * prior_w;
+                    float cy = prior_cy + dy * 0.1f * prior_h;
+                    float w  = prior_w  * std::exp(dw * 0.2f);
+                    float h  = prior_h  * std::exp(dh * 0.2f);
+
+                    // Convertir de (cx, cy, w, h) a (x1, y1, x2, y2) normalizado
+                    float x1 = cx - w * 0.5f;
+                    float y1 = cy - h * 0.5f;
+                    float x2 = cx + w * 0.5f;
+                    float y2 = cy + h * 0.5f;
+
+                    // Escalar a píxeles
+                    x1 *= inputWidth;
+                    y1 *= inputHeight;
+                    x2 *= inputWidth;
+                    y2 *= inputHeight;
+
+                    // -------------------
+                    // Extraer Landmarks
+                    // -------------------
+                    // landmData offset = (10 * anchorCount)*cellIndex + (k * 10)
+                    float lm[10];
+                    for (int m = 0; m < 5; m++)
+                    {
+                        float ldx = landmData[landmOffset + (10 * anchorCount)*cellIndex + (k * 10) + (2*m + 0)];
+                        float ldy = landmData[landmOffset + (10 * anchorCount)*cellIndex + (k * 10) + (2*m + 1)];
+
+                        // decodificar
+                        float lx = prior_cx + ldx * 0.1f * prior_w;
+                        float ly = prior_cy + ldy * 0.1f * prior_h;
+
+                        // pasar a pixeles
+                        lx *= inputWidth;
+                        ly *= inputHeight;
+                        lm[2*m + 0] = lx;
+                        lm[2*m + 1] = ly;
+                    }
+
+                    // -------------------
+                    // Guardar la detección
+                    // -------------------
+                    RetinaFaceDetection det;
+                    det.x1 = x1;
+                    det.y1 = y1;
+                    det.x2 = x2;
+                    det.y2 = y2;
+                    det.confidence = scoreFace;
+                    for (int m=0; m<10; ++m)
+                        det.landmarks[m] = lm[m];
+
+                    detections.push_back(det);
+                } // k
+            } // x
+        } // y
+
+        // Actualizamos offsets para el siguiente scale
+        locOffset   += (4 * anchorCount) * featSize;
+        landmOffset += (10 * anchorCount) * featSize;
+        confOffset  += (2 * anchorCount) * featSize;
+    }
+
+    // En este punto, "detections" contiene TODAS las detecciones con confidence >= confThreshold
+    // Se recomienda aplicar NMS para eliminar solapamientos.
+    // Por ejemplo:
+    // applyNMS(detections, nmsThreshold);
+
+    return detections;
 }
+
 
 // --------------------------------------------------------------------------------
 // Función principal para parsear las salidas de RetinaFace en DeepStream
@@ -140,23 +210,14 @@ bool NvDsInferParseCustomRetinaFace(
     int inputW = networkInfo.width;
     int inputH = networkInfo.height;
 
-    if (myPriorAnchors.empty()) {
-        myPriorAnchors = generate_retinaface_anchors(kMinSizes, kSteps, inputH, inputW, false);
-        // Con 'clip = true' si tu modelo lo requiere
-    }
-    if (myPriorAnchors.empty()) {
-        std::cerr << "ERROR: no se pudieron generar priors" << std::endl;
-        return false;
-    }
-
     // 3) Obtener punteros a las 3 salidas
     const NvDsInferLayerInfo &locLayer   = outputLayersInfo[0];
-    //const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1]; // si luego parseas landmarks
+    const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1]; 
     const NvDsInferLayerInfo &confLayer  = outputLayersInfo[2];
 
     // Convierte buffer a float*
     const float* locData  = reinterpret_cast<const float*>(locLayer.buffer);
-    // const float* landmData = reinterpret_cast<const float*>(landmLayer.buffer); // Solo si usarás landmarks
+    const float* landmData = reinterpret_cast<const float*>(landmLayer.buffer); 
     const float* confData = reinterpret_cast<const float*>(confLayer.buffer);
 
     // 4) Calcular cuántas detecciones (N=16800, etc.)
@@ -167,48 +228,25 @@ bool NvDsInferParseCustomRetinaFace(
         return false;
     }
 
-    // 5) Determinar si usamos 'customData' o si usamos 'myPriorAnchors'
-    //    (Ejemplo: si 'customData' != nullptr, lo tomamos como priors externOs, 
-    //     de lo contrario usamos 'myPriorAnchors')
-    const float* priorData = nullptr;
-    if (customData) {
-        priorData = reinterpret_cast<const float*>(customData);
-    } else {
-        // Sin 'customData', usamos nuestros priors globales
-        priorData = myPriorAnchors.data();
-    }
+    // Suponiendo inputWidth=640, inputHeight=640, y confThreshold=0.5
+    auto dets = decodeRetinaFace(locData, landmData, confData, 640, 640, 0.5f);
 
-    // 6) Parsear y decodificar
-    objectList.clear();
-    objectList.reserve(numBboxes);
+    //auto detsNMS = nmsRetinaFace(dets, nmsThreshold);
 
-    // Umbral de confianza (asumiendo 1 sola clase, "rostro")
-    float detectionThreshold = detectionParams.perClassThreshold[0];
+    std::vector<NvDsInferObjectDetectionInfo> objectList;
+    for (auto& det : dets) {
+        float score = det.score;
 
-    for (size_t i = 0; i < numBboxes; ++i) {
-        // 6.1) Confianza de la clase "rostro" en canal 1
-        float score = confData[i * 2 + 1];
-        if (score < detectionThreshold) {
+        // Filtramos por un umbral de confianza (si no lo hiciste ya en decodeRetinaFace)
+        if (score < confThreshold) {
             continue;
         }
 
-        // 6.2) Decodificar la bbox
-        const float* locPtr   = &locData[i * 4];
-        const float* priorPtr = &priorData[i * 4];
-
-        BBox box = decodeBBox(locPtr, priorPtr);
-
-        // 6.3) Convertir [0,1] -> píxeles absolutos
-        float x1 = box.x1 * inputW;
-        float y1 = box.y1 * inputH;
-        float x2 = box.x2 * inputW;
-        float y2 = box.y2 * inputH;
-
-        // 6.4) Clip a [0, ancho/alto]
-        x1 = std::max(0.0f, std::min(x1, (float)inputW - 1));
-        y1 = std::max(0.0f, std::min(y1, (float)inputH - 1));
-        x2 = std::max(0.0f, std::min(x2, (float)inputW - 1));
-        y2 = std::max(0.0f, std::min(y2, (float)inputH - 1));
+        // Obtenemos coordenadas
+        float x1 = det.x1;
+        float y1 = det.y1;
+        float x2 = det.x2;
+        float y2 = det.y2;
 
         // Descartar boxes degeneradas
         if ((x2 - x1) < 1 || (y2 - y1) < 1) {
@@ -219,18 +257,13 @@ bool NvDsInferParseCustomRetinaFace(
         NvDsInferObjectDetectionInfo objInfo;
         objInfo.classId = 0;  // "0" = rostro (asumiendo que es la única clase)
         objInfo.detectionConfidence = score;
-        objInfo.left = x1;
-        objInfo.top  = y1;
+        objInfo.left   = x1;
+        objInfo.top    = y1;
         objInfo.width  = (x2 - x1);
         objInfo.height = (y2 - y1);
 
         objectList.push_back(objInfo);
-
-        // (Opcional) Parsear landmarks aquí si lo deseas.
-        // const float* landmPtr = &landmData[i * 10];
-        // ...
     }
 
-    // 7) Retornar verdadero si todo fue OK
     return true;
 }
