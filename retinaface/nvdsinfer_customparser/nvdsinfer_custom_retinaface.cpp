@@ -135,53 +135,53 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
 //-------------------------------------------------------------------------------
 // Ejemplo de implementación de NMS (opcional). Ajusta según tus necesidades.
 //-------------------------------------------------------------------------------
-static std::vector<RetinaFaceDetection> applyNMS(
-    const std::vector<RetinaFaceDetection> &dets, float nmsThreshold)
-{
-    if (dets.empty()) return {};
+// static std::vector<RetinaFaceDetection> applyNMS(
+//     const std::vector<RetinaFaceDetection> &dets, float nmsThreshold)
+// {
+//     if (dets.empty()) return {};
 
-    // Ordenar por confianza descendente
-    std::vector<RetinaFaceDetection> sorted = dets;
-    std::sort(sorted.begin(), sorted.end(), 
-              [](const auto &a, const auto &b){
-                  return a.confidence > b.confidence;
-              });
+//     // Ordenar por confianza descendente
+//     std::vector<RetinaFaceDetection> sorted = dets;
+//     std::sort(sorted.begin(), sorted.end(), 
+//               [](const auto &a, const auto &b){
+//                   return a.confidence > b.confidence;
+//               });
 
-    std::vector<bool> suppressed(sorted.size(), false);
-    std::vector<RetinaFaceDetection> results;
+//     std::vector<bool> suppressed(sorted.size(), false);
+//     std::vector<RetinaFaceDetection> results;
 
-    for (size_t i = 0; i < sorted.size(); ++i) {
-        if (suppressed[i]) continue;
+//     for (size_t i = 0; i < sorted.size(); ++i) {
+//         if (suppressed[i]) continue;
 
-        results.push_back(sorted[i]);
-        const auto &detA = sorted[i];
-        float areaA = (detA.x2 - detA.x1) * (detA.y2 - detA.y1);
+//         results.push_back(sorted[i]);
+//         const auto &detA = sorted[i];
+//         float areaA = (detA.x2 - detA.x1) * (detA.y2 - detA.y1);
 
-        // Comparar con detecciones siguientes
-        for (size_t j = i + 1; j < sorted.size(); ++j) {
-            if (suppressed[j]) continue;
+//         // Comparar con detecciones siguientes
+//         for (size_t j = i + 1; j < sorted.size(); ++j) {
+//             if (suppressed[j]) continue;
 
-            const auto &detB = sorted[j];
-            float areaB = (detB.x2 - detB.x1) * (detB.y2 - detB.y1);
+//             const auto &detB = sorted[j];
+//             float areaB = (detB.x2 - detB.x1) * (detB.y2 - detB.y1);
 
-            float interX1 = std::max(detA.x1, detB.x1);
-            float interY1 = std::max(detA.y1, detB.y1);
-            float interX2 = std::min(detA.x2, detB.x2);
-            float interY2 = std::min(detA.y2, detB.y2);
+//             float interX1 = std::max(detA.x1, detB.x1);
+//             float interY1 = std::max(detA.y1, detB.y1);
+//             float interX2 = std::min(detA.x2, detB.x2);
+//             float interY2 = std::min(detA.y2, detB.y2);
 
-            float w = std::max(0.0f, interX2 - interX1);
-            float h = std::max(0.0f, interY2 - interY1);
-            float intersection = w * h;
+//             float w = std::max(0.0f, interX2 - interX1);
+//             float h = std::max(0.0f, interY2 - interY1);
+//             float intersection = w * h;
 
-            float iou = intersection / (areaA + areaB - intersection);
-            if (iou > nmsThreshold) {
-                suppressed[j] = true;
-            }
-        }
-    }
+//             float iou = intersection / (areaA + areaB - intersection);
+//             if (iou > nmsThreshold) {
+//                 suppressed[j] = true;
+//             }
+//         }
+//     }
 
-    return results;
-}
+//     return results;
+// }
 
 //-------------------------------------------------------------------------------
 // Parser que DeepStream llama para extraer detecciones finales
@@ -236,7 +236,7 @@ bool NvDsInferParseCustomRetinaFace(
         auto dets = decodeRetinaFace(locPtr, landmPtr, confPtr, inputW, inputH, confThreshold);
 
         // (Opcional) Aplicar NMS
-        dets = applyNMS(dets, nmsThreshold);
+        //dets = applyNMS(dets, nmsThreshold);
 
         // Llenar la lista final de objetos
         for (auto &det : dets) {
