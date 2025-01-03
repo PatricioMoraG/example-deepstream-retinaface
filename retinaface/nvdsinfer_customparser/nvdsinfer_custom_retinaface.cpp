@@ -94,7 +94,7 @@ bool NvDsInferParseCustomRetinaFace(
     std::vector<NvDsInferObjectDetectionInfo> &objectList,
     std::vector<NvDsInferAttribute> &attrList,
     void* customData,
-    int /*batchSize*/)
+    int batchSize)
 {
     // -----------------------------------------------------
     // 1) Validar que tengamos 3 salidas
@@ -116,7 +116,7 @@ bool NvDsInferParseCustomRetinaFace(
     //
     // OJO: Revisa "layerName" si fuera necesario un mapeo por nombre.
     const NvDsInferLayerInfo &locLayer   = outputLayersInfo[0];
-    const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1];
+    //const NvDsInferLayerInfo &landmLayer = outputLayersInfo[1];
     const NvDsInferLayerInfo &confLayer  = outputLayersInfo[2];
 
     // const float *locData   = reinterpret_cast<const float *>(locLayer.buffer);
