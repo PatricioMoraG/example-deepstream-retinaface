@@ -234,11 +234,11 @@ bool NvDsInferParseCustomRetinaFace(
         // Decodificar detecciones
         auto dets = decodeRetinaFace(locPtr, landmPtr, confPtr, inputW, inputH, confThreshold);
 
-        // (Opcional) Aplicar NMS
-        dets = applyNMS(dets, nmsThreshold);
+        // Aplicar NMS
+        std::vector<RetinaFaceDetection> filteredDetections= applyNMS(dets, nmsThreshold);
 
         // Llenar la lista final de objetos
-        for (auto &det : dets) {
+        for (auto &det : filteredDetections) {
             float score = det.confidence;
 
             std::cout << "Detection: " << score << " [" << det.x1 << ", " << det.y1 << ", " << det.x2 << ", " << det.y2 << "]" << std::endl;
