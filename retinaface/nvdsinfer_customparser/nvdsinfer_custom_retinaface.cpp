@@ -139,10 +139,11 @@ static std::vector<RetinaFaceDetection> applyNMS(
 
     // Ordenar por confianza descendente
     std::vector<RetinaFaceDetection> sorted = dets;
-    std::sort(sorted.begin(), sorted.end(), 
-              [](const auto &a, const auto &b){
-                  return a.confidence > b.confidence;
-              });
+    // Ordenar por confianza descendente
+    std::sort(sorted.begin(), sorted.end(),
+            [](const RetinaFaceDetection &a, const RetinaFaceDetection &b) {
+                return a.confidence > b.confidence;
+            });
 
     std::vector<bool> suppressed(sorted.size(), false);
     std::vector<RetinaFaceDetection> results;

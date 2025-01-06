@@ -6,7 +6,7 @@
 
 #ifndef NVDSINFER_CUSTOM_RETINAFACE_H
 #define NVDSINFER_CUSTOM_RETINAFACE_H
-
+#include <algorithm>
 #include <vector>
 #include "nvdsinfer_custom_impl.h" 
 
