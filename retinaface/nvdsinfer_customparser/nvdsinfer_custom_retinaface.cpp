@@ -235,7 +235,7 @@ bool NvDsInferParseCustomRetinaFace(
         auto dets = decodeRetinaFace(locPtr, landmPtr, confPtr, inputW, inputH, confThreshold);
 
         // (Opcional) Aplicar NMS
-        //dets = applyNMS(dets, nmsThreshold);
+        dets = applyNMS(dets, nmsThreshold);
 
         // Llenar la lista final de objetos
         for (auto &det : dets) {
