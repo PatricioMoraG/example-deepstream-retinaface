@@ -132,9 +132,6 @@ std::vector<RetinaFaceDetection> decodeRetinaFace(
     return detections;
 }
 
-//-------------------------------------------------------------------------------
-// Ejemplo de implementación de NMS (opcional). Ajusta según tus necesidades.
-//-------------------------------------------------------------------------------
 static std::vector<RetinaFaceDetection> applyNMS(
     const std::vector<RetinaFaceDetection> &dets, float nmsThreshold)
 {

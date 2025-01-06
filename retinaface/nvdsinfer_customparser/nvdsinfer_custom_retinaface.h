@@ -8,15 +8,8 @@
 #define NVDSINFER_CUSTOM_RETINAFACE_H
 
 #include <vector>
-
-// Asegúrate de incluir el header adecuado que declara `NvDsInferParseDetectionParams`
-// Normalmente se encuentra en "nvdsinfer_custom_impl.h" o "nvdsinfer.h", dependiendo
-// de tu versión de DeepStream. Ajusta según tu instalación.
 #include "nvdsinfer_custom_impl.h" 
 
-//------------------------------------------------------------------------------
-// Estructuras auxiliares y declaraciones de funciones
-//------------------------------------------------------------------------------
 
 /**
  * @brief Estructura auxiliar para stride y anchor base.
@@ -30,12 +23,12 @@ struct StrideAnchor {
  * @brief Estructura que representa una detección de RetinaFace, con bbox y landmarks.
  */
 struct RetinaFaceDetection {
-    float x1;         /**< Coordenada x del borde izquierdo de la caja */
-    float y1;         /**< Coordenada y del borde superior de la caja */
-    float x2;         /**< Coordenada x del borde derecho de la caja */
-    float y2;         /**< Coordenada y del borde inferior de la caja */
-    float confidence; /**< Puntaje de confianza de la detección */
-    float landmarks[10]; /**< Coordenadas de los 5 puntos de referencia (x,y) */
+    float x1;         
+    float y1;
+    float x2;
+    float y2;
+    float confidence; 
+    float landmarks[10]; 
 };
 
 /**
